@@ -75,7 +75,6 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         .status-msg { color: #5f6368; font-size: 15px; font-style: italic; margin-bottom: 8px; }
-        .alert-fallback { background-color: #e8f0fe; color: #1a73e8; padding: 10px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; font-weight: 500;}
         
         .ai-table { width: 100%; border-collapse: collapse; margin-top: 16px; background-color: #ffffff; font-size: 14px; }
         .ai-table th { background-color: #f1f3f4; color: #3c4043; font-weight: 600; padding: 10px; border: 1px solid #dadce0; }
@@ -92,7 +91,7 @@
 
     <div class="search-container">
         <input type="text" id="user-query" class="search-box" 
-               placeholder="SAP 실시간 데이터를 조회합니다... (예: 제일 저렴한 좌석 5개)" 
+               placeholder="실시간 SAP OData 내역을 분석합니다..." 
                onkeypress="if(event.keyCode==13) processRealSAPSearch()">
         
         <div class="btn-container">
@@ -103,21 +102,12 @@
     <div id="result-card"></div>
 
     <script>
+        // 사용자의 실제 건양대 SAP OData 인프라 설정
         const SAP_CONFIG = {
             url: "http://sap01.konyang.ac.kr:8081/sap/opu/odata/sap/zodata_sflight_srv/FlightSet?$format=json",
             user: "ES2-15",       
             password: "Roajy0417!" 
         };
-
-        // 서버 셧다운 대비 발표 시연용 예외 처리 데이터 (Mock-up)
-        const MOCK_SAP_DATA = [
-            { CARRID: "SQ", CONNID: "0016", FLDATE: "20260812", SEATSMAX: "400", SEATSOCC: "388", PRICE: "150000", CURRENCY: "KRW" },
-            { CARRID: "LH", CONNID: "0402", FLDATE: "20260720", SEATSMAX: "300", SEATSOCC: "296", PRICE: "320", CURRENCY: "USD" },
-            { CARRID: "AA", CONNID: "0089", FLDATE: "20260905", SEATSMAX: "250", SEATSOCC: "223", PRICE: "410", CURRENCY: "USD" },
-            { CARRID: "AZ", CONNID: "0788", FLDATE: "20260603", SEATSMAX: "200", SEATSOCC: "200", PRICE: "1030", CURRENCY: "EUR" }, // 만석 예시
-            { CARRID: "KE", CONNID: "0023", FLDATE: "20261011", SEATSMAX: "350", SEATSOCC: "310", PRICE: "90000", CURRENCY: "KRW" },
-            { CARRID: "JL", CONNID: "0062", FLDATE: "20261115", SEATSMAX: "280", SEATSOCC: "279", PRICE: "180", CURRENCY: "USD" }
-        ];
 
         async function processRealSAPSearch() {
             const query = document.getElementById('user-query').value.trim();
@@ -126,12 +116,10 @@
             if (!query) return alert("질문을 입력해 주세요!");
 
             resultCard.style.display = "block";
-            resultCard.innerHTML = `<div class="status-msg">🌐 <b>[1단계]</b> 건양대 SAP 백엔드(/FlightSet) 실시간 OData 호출 중...</div>`;
-
-            let rawFlights = [];
-            let isFallback = false;
+            resultCard.innerHTML = `<div class="status-msg">🌐 <b>[1단계]</b> 건양대 SAP OData 인프라(${SAP_CONFIG.user}) 호출 및 데이터 수집 중...</div>`;
 
             try {
+                // 실시간 SAP OData 직접 호출
                 const sapResponse = await fetch(SAP_CONFIG.url, {
                     method: 'GET',
                     headers: {
@@ -140,92 +128,93 @@
                     }
                 });
                 
-                if(!sapResponse.ok) throw new Error("서버 응답 비정상");
+                if(!sapResponse.ok) throw new Error(`SAP 서버 응답 실패 (상태 코드: ${sapResponse.status})`);
+                
                 const sapData = await sapResponse.json();
-                rawFlights = sapData.d.results;
+                const rawFlights = sapData.d.results;
+                
+                resultCard.innerHTML = `<div class="status-msg">🧠 <b>[2단계]</b> 수신 완료된 ${rawFlights.length}건의 실제 SAP 로우 데이터 구문 분석 중...</div>`;
+                await new Promise(resolve => setTimeout(resolve, 400)); 
+
+                // 데이터 구조 포맷팅
+                let processed = rawFlights.map(f => {
+                    // OData 날짜 포맷 제어 (/Date(ms)/ 형태 파싱)
+                    let formattedDate = f.FLDATE;
+                    if (f.FLDATE && f.FLDATE.includes("Date")) {
+                        const ms = parseInt(f.FLDATE.match(/\d+/)[0]);
+                        const d = new Date(ms);
+                        formattedDate = d.toISOString().split('T')[0];
+                    } else if (f.FLDATE && f.FLDATE.length === 8) {
+                        formattedDate = `${f.FLDATE.substring(0,4)}-${f.FLDATE.substring(4,6)}-${f.FLDATE.substring(6,8)}`;
+                    }
+
+                    return {
+                        carrid: f.CARRID,
+                        connid: f.CONNID,
+                        fldate: formattedDate,
+                        remains: parseInt(f.SEATSMAX || 0) - parseInt(f.SEATSOCC || 0),
+                        price: parseFloat(f.PRICE || 0),
+                        currency: f.CURRENCY || 'USD'
+                    };
+                });
+
+                // 1. 자연어 조건 파싱 (날짜 필터링)
+                let displayFlights = [...processed];
+                const dateMatch = query.match(/\d{4}-\d{2}-\d{2}/);
+                if (dateMatch) {
+                    displayFlights = displayFlights.filter(f => f.fldate === dateMatch[0]);
+                }
+
+                // 2. 자연어 조건 파싱 (항공사 코드 필터링)
+                const targetAir = query.toUpperCase().match(/[A-Z]{2}/);
+                if (targetAir && displayFlights.some(f => f.carrid === targetAir[0])) {
+                    displayFlights = displayFlights.filter(f => f.carrid === targetAir[0]);
+                }
+
+                // 3. 정렬 처리
+                if (query.includes("비싼") || query.includes("높은")) {
+                    displayFlights.sort((a, b) => b.price - a.price);
+                } else {
+                    displayFlights.sort((a, b) => a.price - b.price);
+                }
+
+                // 결과 화면 렌더링
+                let htmlOutput = `<h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 16px;">📊 실제 SAP OData 실시간 조회 브리핑</h4>`;
+                htmlOutput += `<p style="margin: 0 0 16px 0; font-size: 13px; color: #4e5256;">사용자 계정(<b>${SAP_CONFIG.user}</b>)의 ERP 인프라 테이블에서 직접 추출된 데이터 결과 리스트입니다.</p>`;
+                
+                htmlOutput += `<table class="ai-table">
+                                <thead>
+                                    <tr>
+                                        <th>항공사</th><th>편명</th><th>운항일자</th><th>잔여석 상태</th><th>요금 (통화)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
+                displayFlights.forEach(f => {
+                    htmlOutput += `<tr>
+                                    <td><b>${f.carrid}</b></td>
+                                    <td>${f.connid}</td>
+                                    <td>${f.fldate}</td>
+                                    <td><span class="badge-green">${f.remains}석 남음</span></td>
+                                    <td><span class="price-text">${f.price.toLocaleString()} ${f.currency}</span></td>
+                                   </tr>`;
+                });
+
+                htmlOutput += `</tbody></table>`;
+                resultCard.innerHTML = htmlOutput;
+
             } catch (error) {
-                // 서버 연결 실패 시 가상 샌드박스 망으로 우회 (시연 방어)
-                rawFlights = MOCK_SAP_DATA;
-                isFallback = true;
+                // 실제 통신망 차단 시 에러 모니터링 출력
+                resultCard.innerHTML = `
+                    <div style="color: #d93025; font-size: 14px; line-height: 1.6;">
+                        <b>❌ 실시간 SAP 데이터 수집 실패 (네트워크 단절)</b><br>
+                        원인: <code>${error.message}</code><br><br>
+                        <span style="color:#202124;">💡 <b>진짜 OData 데이터를 뽑기 위한 체크리스트:</b></span><br>
+                        1. 현재 컴퓨터가 <b>건양대 교내 내부 와이파이망</b>에 물려있나요?<br>
+                        2. 외부망이라면 학교 <b>SSL-VPN 프로그램</b>이 정상 가동 중인가요?<br>
+                        3. 크롬 확장 프로그램 <b>Allow CORS</b>의 C 버튼이 주황색(ON)으로 활성화된 채 새로고침 하셨나요?
+                    </div>`;
             }
-            
-            resultCard.innerHTML = `<div class="status-msg">🧠 <b>[2단계]</b> 가상 AI 엔진(안티) 작동: 데이터 연산 정렬 중...</div>`;
-            await new Promise(resolve => setTimeout(resolve, 500)); 
-
-            // 안티 엔진의 확정적 수치 파싱 레이어
-            const processed = rawFlights.map(f => {
-                const max = parseInt(f.SEATSMAX || 0);
-                const occ = parseInt(f.SEATSOCC || 0);
-                return {
-                    carrid: f.CARRID,
-                    connid: f.CONNID,
-                    fldate: f.FLDATE ? `${f.FLDATE.substring(0,4)}-${f.FLDATE.substring(4,6)}-${f.FLDATE.substring(6,8)}` : '-',
-                    remains: max - occ,
-                    price: parseFloat(f.PRICE || 0),
-                    currency: f.CURRENCY || 'USD'
-                };
-            });
-
-            // 1. 잔여석이 1석 이상 있는 것만 (안티 에러 교정)
-            const availableOnly = processed.filter(f => f.remains > 0);
-
-            // 2. 질문 의도 해석 및 정렬 조치
-            let top5 = [];
-            let queryTypeTitle = "";
-
-            if (query.includes("비싼") || query.includes("높은")) {
-                // 높은 순 정렬 (내림차순)
-                availableOnly.sort((a, b) => {
-                    const valA = a.currency === 'KRW' ? a.price / 1350 : a.price;
-                    const valB = b.currency === 'KRW' ? b.price / 1350 : b.price;
-                    return valB - valA;
-                });
-                queryTypeTitle = "최고가 유효 노선 리포트";
-            } else {
-                // 기본값: 저렴한 순 정렬 (오름차순)
-                availableOnly.sort((a, b) => {
-                    const valA = a.currency === 'KRW' ? a.price / 1350 : a.price;
-                    const valB = b.currency === 'KRW' ? b.price / 1350 : b.price;
-                    return valA - valB;
-                });
-                queryTypeTitle = "최저가 가성비 노선 리포트";
-            }
-
-            top5 = availableOnly.slice(0, 5);
-
-            // 3단계 화면 출력
-            let htmlOutput = "";
-            if(isFallback) {
-                htmlOutput += `<div class="alert-box alert-fallback">💡 <b>[인프라 통신 예외 감지]</b> 외부망 보안 차단으로 인해 '시연용 가상 샌드박스 데이터셋' 모드로 즉각 안전 전환되었습니다. (안티 AI 정렬 알고리즘 정상 구동됨)</div>`;
-            }
-
-            htmlOutput += `<h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 16px;">🤖 안티(AI) 실시간 SAP 분석 브리핑</h4>`;
-            htmlOutput += `<p style="margin: 0 0 16px 0; font-size: 14px; color: #4e5256;">질문하신 <b>"${query}"</b>에 대해 다중 정렬 알고리즘을 수행한 <b>${queryTypeTitle}</b>입니다.</p>`;
-            
-            htmlOutput += `<table class="ai-table">
-                            <thead>
-                                <tr>
-                                    <th>항공사</th><th>편명</th><th>운항일자</th><th>잔여석 상태</th><th>요금 (통화)</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
-
-            top5.forEach(f => {
-                htmlOutput += `<tr>
-                                <td><b>${f.carrid}</b></td>
-                                <td>${f.connid}</td>
-                                <td>${f.fldate}</td>
-                                <td><span class="badge-green">${f.remains}석 남음</span></td>
-                                <td><span class="price-text">${f.price.toLocaleString(undefined, {maximumFractionDigits: 0})} ${f.currency}</span></td>
-                               </tr>`;
-            });
-
-            htmlOutput += `</tbody></table>`;
-            htmlOutput += `<p style="font-size: 11px; color: #70757a; margin-top: 16px; line-height: 1.4;">
-                            <b>[Data 무결성 검증 완료]</b> 만석인 노선(예: AZ 0788)은 순위에서 자동 제외되었으며 통화 단위를 보정하여 정확히 산출했습니다.
-                           </p>`;
-
-            resultCard.innerHTML = htmlOutput;
         }
     </script>
 </body>
