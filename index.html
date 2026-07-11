@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SAP Real-Time AI Search Engine</title>
     <style>
-        /* 구글의 미니멀리즘 디자인 완벽 재현 */
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
@@ -23,12 +22,12 @@
             letter-spacing: -2px;
             user-select: none;
         }
-        .logo span:nth-child(1) { color: #4285F4; } /* S */
-        .logo span:nth-child(2) { color: #EA4335; } /* A */
-        .logo span:nth-child(3) { color: #FBBC05; } /* P */
-        .logo span:nth-child(4) { color: #34A853; } /* - */
-        .logo span:nth-child(5) { color: #4285F4; } /* A */
-        .logo span:nth-child(6) { color: #EA4335; } /* I */
+        .logo span:nth-child(1) { color: #4285F4; }
+        .logo span:nth-child(2) { color: #EA4335; }
+        .logo span:nth-child(3) { color: #FBBC05; }
+        .logo span:nth-child(4) { color: #34A853; }
+        .logo span:nth-child(5) { color: #4285F4; }
+        .logo span:nth-child(6) { color: #EA4335; }
 
         .search-container {
             width: 100%;
@@ -63,7 +62,6 @@
         }
         button:hover { border: 1px solid #dadce0; color: #202124; }
 
-        /* 결과 출력 리포트 카드 */
         #result-card {
             margin-top: 32px;
             width: 100%;
@@ -104,7 +102,6 @@
     <div id="result-card"></div>
 
     <script>
-        // 건양대 SAP 실제 OData 엔드포인트 및 인증 정보 설정
         const SAP_CONFIG = {
             url: "http://sap01.konyang.ac.kr:8081/sap/opu/odata/sap/zodata_sflight_srv/FlightSet?$format=json",
             user: "ES2-15",       
@@ -150,17 +147,14 @@
                     };
                 });
 
-                // 필터링: 잔여석이 1석 이상 있는 것만
                 const availableOnly = processed.filter(f => f.remains > 0);
 
-                // 정렬: 가격 낮은 순 (통화 보정 적용)
                 availableOnly.sort((a, b) => {
                     const valA = a.currency === 'KRW' ? a.price / 1350 : a.price;
                     const valB = b.currency === 'KRW' ? b.price / 1350 : b.price;
                     return valA - valB;
                 });
 
-                // 추출: 상위 5개
                 const top5 = availableOnly.slice(0, 5);
 
                 if(top5.length === 0) {
@@ -185,7 +179,7 @@
                                     <td>${f.connid}</td>
                                     <td>${f.fldate}</td>
                                     <td><span class="badge-green">${f.remains}석 남음</span></td>
-                                    <td><span class="price-text">${f.price.toLocaleString(undefined, {maximumFractionDigits: 0})}${f.currency}</span></td>
+                                    <td><span class="price-text">${f.price.toLocaleString(undefined, {maximumFractionDigits: 0})} ${f.currency}</span></td>
                                    </tr>`;
                 });
 
@@ -203,4 +197,10 @@
                         <b>❌ 실시간 SAP 데이터 수집 실패</b><br>
                         원인: <code>${error.message}</code><br><br>
                         <span style="color:#202124;">💡 <b>발표 시연용 즉시 해결책:</b></span><br>
-                        브라우저 보안망(CORS 차단 정책)을 통과하기 위해 크롬 웹스토어에서 <b>'Allow CORS'</b> 확장 프로그램을 다운로드 후
+                        브라우저 보안망(CORS 차단 정책)을 통과하기 위해 크롬 웹스토어에서 <b>'Allow CORS'</b> 확장 프로그램을 다운로드 후 <b>[활성화(ON)]</b> 하고 새로고침(F5) 해주세요!
+                    </div>`;
+            }
+        }
+    </script>
+</body>
+</html>
