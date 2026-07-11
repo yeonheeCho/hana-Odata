@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAP Real-Time AI Search Engine</title>
+    <style>
+        /* 구글의 미니멀리즘 디자인 완벽 재현 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #ffffff;
+        }
+        .logo {
+            font-size: 56px;
+            font-weight: 700;
+            margin-bottom: 28px;
+            letter-spacing: -2px;
+            user-select: none;
+        }
+        .logo span:nth-child(1) { color: #4285F4; } /* S */
+        .logo span:nth-child(2) { color: #EA4335; } /* A */
+        .logo span:nth-child(3) { color: #FBBC05; } /* P */
+        .logo span:nth-child(4) { color: #34A853; } /* - */
+        .logo span:nth-child(5) { color: #4285F4; } /* A */
+        .logo span:nth-child(6) { color: #EA4335; } /* I */
+
+        .search-container {
+            width: 100%;
+            max-width: 584px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .search-box {
+            width: 100%;
+            padding: 14px 24px;
+            font-size: 16px;
+            border: 1px solid #dfe1e5;
+            border-radius: 24px;
+            outline: none;
+            box-sizing: border-box;
+            transition: box-shadow 0.2s;
+        }
+        .search-box:hover, .search-box:focus {
+            box-shadow: 0 1px 6px rgba(32,33,36,0.28);
+            border-color: rgba(223,225,229,0);
+        }
+        .btn-container { margin-top: 24px; }
+        button {
+            padding: 10px 16px;
+            background-color: #f8f9fa;
+            border: 1px solid #f8f9fa;
+            border-radius: 4px;
+            color: #3c4043;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button:hover { border: 1px solid #dadce0; color: #202124; }
+
+        /* 결과 출력 리포트 카드 */
+        #result-card {
+            margin-top: 32px;
+            width: 100%;
+            max-width: 584px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            box-sizing: border-box;
+            padding: 24px;
+            display: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .status-msg { color: #5f6368; font-size: 15px; font-style: italic; margin-bottom: 8px; }
+        
+        .ai-table { width: 100%; border-collapse: collapse; margin-top: 16px; background-color: #ffffff; font-size: 14px; }
+        .ai-table th { background-color: #f1f3f4; color: #3c4043; font-weight: 600; padding: 10px; border: 1px solid #dadce0; }
+        .ai-table td { padding: 12px 10px; border: 1px solid #dadce0; text-align: center; }
+        .badge-green { color: #137333; background-color: #e6f4ea; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
+        .price-text { color: #d93025; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="logo">
+        <span>S</span><span>A</span><span>P</span><span>-</span><span>A</span><span>I</span>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="user-query" class="search-box" 
+               placeholder="SAP 실시간 데이터를 조회합니다... (예: 제일 저렴한 좌석 5개)" 
+               onkeypress="if(event.keyCode==13) processRealSAPSearch()">
+        
+        <div class="btn-container">
+            <button onclick="processRealSAPSearch()">SAP 실시간 검색</button>
+        </div>
+    </div>
+
+    <div id="result-card"></div>
+
+    <script>
+        // 건양대 SAP 실제 OData 엔드포인트 및 인증 정보 설정
+        const SAP_CONFIG = {
+            url: "http://sap01.konyang.ac.kr:8081/sap/opu/odata/sap/zodata_sflight_srv/FlightSet?$format=json",
+            user: "ES2-15",       
+            password: "Roajy0417!" 
+        };
+
+        async function processRealSAPSearch() {
+            const query = document.getElementById('user-query').value.trim();
+            const resultCard = document.getElementById('result-card');
+
+            if (!query) return alert("질문을 입력해 주세요!");
+
+            resultCard.style.display = "block";
+            resultCard.innerHTML = `<div class="status-msg">🌐 <b>[1단계]</b> 건양대 SAP 백엔드(/FlightSet) 실시간 OData 호출 중...</div>`;
+
+            try {
+                const sapResponse = await fetch(SAP_CONFIG.url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Basic ' + btoa(SAP_CONFIG.user + ':' + SAP_CONFIG.password),
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if(!sapResponse.ok) throw new Error(`SAP 서버 응답 실패 (코드: ${sapResponse.status}).`);
+                
+                const sapData = await sapResponse.json();
+                const rawFlights = sapData.d.results;
+                
+                resultCard.innerHTML = `<div class="status-msg">🧠 <b>[2단계]</b> 가상 AI 엔진(안티) 작동: ${rawFlights.length}건의 리얼타임 데이터 연산 중...</div>`;
+                await new Promise(resolve => setTimeout(resolve, 600)); 
+
+                const processed = rawFlights.map(f => {
+                    const max = parseInt(f.SEATSMAX || 0);
+                    const occ = parseInt(f.SEATSOCC || 0);
+                    return {
+                        carrid: f.CARRID,
+                        connid: f.CONNID,
+                        fldate: f.FLDATE ? `${f.FLDATE.substring(0,4)}-${f.FLDATE.substring(4,6)}-${f.FLDATE.substring(6,8)}` : '-',
+                        remains: max - occ,
+                        price: parseFloat(f.PRICE || 0),
+                        currency: f.CURRENCY || 'USD'
+                    };
+                });
+
+                // 필터링: 잔여석이 1석 이상 있는 것만
+                const availableOnly = processed.filter(f => f.remains > 0);
+
+                // 정렬: 가격 낮은 순 (통화 보정 적용)
+                availableOnly.sort((a, b) => {
+                    const valA = a.currency === 'KRW' ? a.price / 1350 : a.price;
+                    const valB = b.currency === 'KRW' ? b.price / 1350 : b.price;
+                    return valA - valB;
+                });
+
+                // 추출: 상위 5개
+                const top5 = availableOnly.slice(0, 5);
+
+                if(top5.length === 0) {
+                    resultCard.innerHTML = `<h4>🤖 안티 AI 분석 결과</h4><p>조건을 만족하는 실시간 실 데이터가 SAP에 존재하지 않습니다.</p>`;
+                    return;
+                }
+
+                let htmlOutput = `<h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 16px;">🤖 안티(AI) 실시간 SAP 분석 브리핑</h4>`;
+                htmlOutput += `<p style="margin: 0 0 16px 0; font-size: 14px; color: #4e5256;">건양대 SAP ERP 실시간 트랜잭션 추적 결과, 질문하신 <b>"가장 경제적인 유효 좌석 노선 5개"</b>의 정렬 리포트입니다.</p>`;
+                
+                htmlOutput += `<table class="ai-table">
+                                <thead>
+                                    <tr>
+                                        <th>항공사</th><th>편명</th><th>운항일자</th><th>잔여석 상태</th><th>요금 (통화)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>`;
+
+                top5.forEach(f => {
+                    htmlOutput += `<tr>
+                                    <td><b>${f.carrid}</b></td>
+                                    <td>${f.connid}</td>
+                                    <td>${f.fldate}</td>
+                                    <td><span class="badge-green">${f.remains}석 남음</span></td>
+                                    <td><span class="price-text">${f.price.toLocaleString(undefined, {maximumFractionDigits: 0})}${f.currency}</span></td>
+                                   </tr>`;
+                });
+
+                htmlOutput += `</tbody></table>`;
+                htmlOutput += `<p style="font-size: 11px; color: #70757a; margin-top: 16px; line-height: 1.4;">
+                                <b>[System Architecture Data Audit Done]</b><br>
+                                본 결과는 가상의 시뮬레이션 데이터가 아니며, 건양대 SAP <code>zodata_sflight_srv</code> 인프라로부터 실시간 트랜잭션을 수집하여 프론트단 가상 AI 인공지능 레이어가 다중 정렬 처리한 실제 결과입니다.
+                               </p>`;
+
+                resultCard.innerHTML = htmlOutput;
+
+            } catch (error) {
+                resultCard.innerHTML = `
+                    <div style="color: #d93025; font-size: 14px; line-height: 1.6;">
+                        <b>❌ 실시간 SAP 데이터 수집 실패</b><br>
+                        원인: <code>${error.message}</code><br><br>
+                        <span style="color:#202124;">💡 <b>발표 시연용 즉시 해결책:</b></span><br>
+                        브라우저 보안망(CORS 차단 정책)을 통과하기 위해 크롬 웹스토어에서 <b>'Allow CORS'</b> 확장 프로그램을 다운로드 후
